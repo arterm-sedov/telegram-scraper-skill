@@ -12,24 +12,39 @@ Extract content from Telegram channels (public, private, paywalled).
 
 | Type | Access Method | Requirements |
 |------|---------------|--------------|
-| Public | Web scraping (Method 1) | None (URL only) |
+| Public | Tavily extract (Method 1) | None (URL only) |
+| Public | Playwright (Method 2) | `npx playwright-cli` |
+| Private | Telethon API (Method 3) | api_id, api_hash, phone |
 | Private | Playwright + login (Method 4) | User logs in manually |
-| Private | API (Telethon) (Method 2) | api_id, api_hash, phone |
 | Paywalled | Browser + session (Method 4) | Account + subscription |
-| Any | Manual export (Method 3) | Telegram Desktop |
+| Any | Manual export (Method 5) | Telegram Desktop |
 
 ## Workflow
 
 Follow this escalation pattern:
 
-1. **Try public preview** — `https://t.me/s/CHANNEL_NAME`
-2. **Public?** → Use Playwright web scraping (Method 1)
-3. **Private?** → Use Playwright with login (Method 4) or Telethon API (Method 2)
-4. **Paywalled?** → Manual export via Telegram Desktop (Method 3)
+1. **Try Tavily extract** — `tvly extract "https://t.me/s/CHANNEL_NAME"` (Method 1)
+2. **Failed?** → Use Playwright web scraping (Method 2)
+3. **Private?** → Use Telethon API (Method 3) or Playwright with login (Method 4)
+4. **Paywalled?** → Manual export via Telegram Desktop (Method 5)
 
-## Method 1: Playwright Web Scraping (Public Channels)
+## Method 1: Tavily Extract (Public Channels - Simplest)
 
-Best for: Public channels without login
+Best for: Public channels, quick extraction without setup
+
+```bash
+# Extract content from public preview page
+tvly extract "https://t.me/s/CHANNEL_NAME" --format markdown
+```
+
+**Limitations:**
+- May get garbled content (JS rendering issues)
+- Rate limited by Telegram
+- Use Playwright (Method 2) if this fails
+
+## Method 2: Playwright Web Scraping (Public Channels - Reliable)
+
+Best for: Public channels when Method 1 fails, JS-rendered content
 
 ```bash
 # Navigate to channel web preview
@@ -55,7 +70,7 @@ npx playwright-cli snapshot
 .tgme_widget_message_photo_wrap  /* Image link */
 ```
 
-## Method 2: Telethon API (All Channels)
+## Method 3: Telethon API (All Channels)
 
 Best for: Private channels, bulk extraction, media
 
@@ -100,44 +115,52 @@ ChatExport_YYYY-MM-DD/
 └── files/               # Other files
 ```
 
-## Method 4: Playwright with Login (Private Channels)
+## Method 4: Playwright with Login (Private/Closed Channels)
 
-Best for: Private channels, user logs in manually
+Best for: Private/closed channels requiring login, persistent session
 
 ```bash
-# Open Telegram Web in headed mode (one-time)
+# Open Telegram Web in headed mode - user will log in manually
 npx playwright-cli open "https://web.telegram.org/" --headed
 
-# Wait for user to log in, then navigate to channel
-# User logs in manually in the browser window
+# >>> USER ACTION: Log in manually in the browser window <<<
+# Wait for user confirmation, then:
 
 # Search for channel
 npx playwright-cli type "CHANNEL_NAME"
 
-# Click on channel in search results
-npx playwright-cli click eREF  # Use ref from snapshot
+# Click on channel in search results (use ref from snapshot)
+npx playwright-cli click eREF
 
 # Extract content
-npx playwright-cli eval "document.body.innerText"
+npx playwright-cli eval "document.querySelectorAll('.tgme_widget_message_text').length + ' messages'"
 
 # Scroll for more content
 npx playwright-cli press End
 npx playwright-cli eval "document.body.innerText"
 
 # Navigate to next channel (browser stays open!)
-npx playwright-cli go-back  # To chat list
+npx playwright-cli go-back  # Return to chat list
 npx playwright-cli type "OTHER_CHANNEL"
-npx playwright-cli click eREF  # Click new channel
-npx playwright-cli eval "document.body.innerText"
+npx playwright-cli click eREF
 ```
 
 **Workflow:**
-1. Open Telegram Web in headed mode (one-time only)
-2. User logs in manually (browser window visible)
+1. Agent opens Telegram Web in headed mode
+2. **User logs in manually** (browser window visible)
 3. Agent navigates to target channel
 4. Agent extracts content
 5. **Browser stays open** — agent can navigate to next channel
 6. Repeat for multiple channels without re-login
+
+**For open channels via preview:**
+```bash
+# Open channel preview (no login needed for public channels)
+npx playwright-cli open "https://t.me/s/CHANNEL_NAME"
+
+# Extract messages
+npx playwright-cli eval "document.querySelector('.tgme_widget_message_text').innerText"
+```
 
 **Session Management:**
 - Browser session persists between extractions
@@ -147,19 +170,34 @@ npx playwright-cli eval "document.body.innerText"
 
 **DOM Selectors for Telegram Web:**
 ```css
-.chat-list-item        /* Chat in sidebar */
-.message               /* Message container */
-.text-content          /* Message text */
-.time                  /* Timestamp */
+.tgme_widget_message_text   /* Message text (preview pages) */
+.chat-list-item             /* Chat in sidebar */
+.message                    /* Message container */
+.time                       /* Timestamp */
 ```
 
-## Method 5: Apify Actor (No Account)
+## Method 5: Telethon API (All Channels)
 
-Best for: One-off extractions, no setup
+Best for: Private channels, bulk extraction, media, programmatic access
 
-```bash
-# Use Apify Telegram Channels Scraper
-# https://apify.com/apify/telegram-channels-scraper
+**Setup:**
+1. Get api_id and api_hash from https://my.telegram.org/apps
+2. Install: `pip install telethon`
+3. Run with phone number authentication
+
+```python
+from telethon import TelegramClient
+
+api_id = YOUR_API_ID
+api_hash = 'YOUR_API_HASH'
+
+async def scrape_channel(client, channel_username, limit=100):
+    async with client:
+        channel = await client.get_entity(channel_username)
+        messages = await client.get_messages(channel, limit=limit)
+        for msg in messages:
+            if msg.text:
+                print(f"{msg.date}: {msg.text}")
 ```
 
 ## Script: Extract All Chat Exports
