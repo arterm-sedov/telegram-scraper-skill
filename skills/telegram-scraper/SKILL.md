@@ -20,16 +20,30 @@ Extract **TEXT content** from Telegram channels (public, private, paywalled).
 
 ## Web Fetch (Simplest - Try First)
 
-Before Playwright, try available web fetch tools:
+Before Playwright, try available web fetch tools (order: free → paid):
 
 ```bash
-# Tavily extract (if available)
+# 1. searxng-extract (FREE, local, no API key)
+# Requires: searxng-docker-tavily-adapter running on localhost:8000
+curl -X POST "http://localhost:8000/search" \
+  -H "Content-Type: application/json" \
+  -d '{"query": "site:t.me/s/CHANNEL_NAME", "max_results": 1, "include_raw_content": true}'
+
+# 2. tavily-extract (if available, may have limits)
 tvly extract "https://t.me/s/CHANNEL_NAME" --format markdown
 
-# Or webfetch tool
+# 3. webfetch tool (if available)
 # Or direct HTTP (may be blocked by Telegram)
 curl "https://t.me/s/CHANNEL_NAME"
 ```
+
+**Comparison:**
+
+| Tool | Cost | Limits | JS Rendering |
+|------|------|--------|---------------|
+| searxng-extract | Free | 2500 chars/page | No |
+| tavily-extract | Paid | API limits | Yes (--extract-depth advanced) |
+| webfetch | Varies | Varies | Varies |
 
 **Limitations:** Telegram may block/rate-limit direct fetch requests. If blocked or garbled output, escalate to Playwright.
 
