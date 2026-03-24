@@ -14,9 +14,24 @@ Extract **TEXT content** from Telegram channels (public, private, paywalled).
 
 | Type | Method | Requirements |
 |------|--------|--------------|
-| Public | Playwright preview | `npx playwright-cli`, no login |
+| Public | Web fetch / Playwright | Available fetch tool or `npx playwright-cli` |
 | Private/Closed | Playwright headed + user login | User logs in once, session persists |
 | Any | Desktop Export + Script | Telegram Desktop, then run script |
+
+## Web Fetch (Simplest - Try First)
+
+Before Playwright, try available web fetch tools:
+
+```bash
+# Tavily extract (if available)
+tvly extract "https://t.me/s/CHANNEL_NAME" --format markdown
+
+# Or webfetch tool
+# Or direct HTTP (may be blocked by Telegram)
+curl "https://t.me/s/CHANNEL_NAME"
+```
+
+**Limitations:** Telegram may block/rate-limit direct fetch requests. If blocked or garbled output, escalate to Playwright.
 
 ## OCR/Vision Usage
 
@@ -156,17 +171,18 @@ D:/Documents/cmw-rag-channel-extractions/CHANNEL_NAME.md
 ## Workflow Summary
 
 ```
-Public channel?
-  → Method 1: Playwright preview, extract text via DOM
-  
-Private/closed channel?
-  → Method 2: Playwright headed, user logs in, session persists
-  → Use OCR only for clicking/typing in browser
-  → Extract text via DOM selectors
-  
-Have Desktop export?
-  → Method 3: Run extract_all_chats.py
+Extract text from channel?
+  → Try available web fetch tools (tavily-extract, webfetch, curl)
+  → Failed or blocked? → Method 1: Playwright preview
+  → Private/closed? → Method 2: Playwright headed + user login
+  → Have Desktop export? → Method 3: Run extract_all_chats.py
 ```
+
+**Escalation order:**
+1. **Web fetch** - Use available tools (tavily-extract, webfetch, HTTP clients)
+2. **Playwright headless** - For public channels when web fetch fails/blocking
+3. **Playwright headed** - For private channels, user logs in once
+4. **Desktop export** - When all else fails or for complete history
 
 ## See Also
 
