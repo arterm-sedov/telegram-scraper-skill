@@ -1,110 +1,119 @@
 ---
 name: telegram-scraper
-description: Extract content from Telegram channels (public, private, paywalled). Use this skill when the user wants to scrape Telegram channels, extract chat history, download messages from Telegram, or says "scrape Telegram", "get Telegram content", "extract from t.me". Supports public channels via web scraping, private channels via Telethon API, and manual export via Telegram Desktop.
+description: Extract TEXT content from Telegram channels (public, private, paywalled). Use this skill when the user wants to scrape Telegram channels, extract chat history, download messages from Telegram, or says "scrape Telegram", "get Telegram content", "extract from t.me". Focus on text extraction - OCR/vision only for browser automation (clicking, searching).
 license: Complete terms in LICENSE.txt
 ---
 
 # Telegram Channel Scraper
 
-Extract content from Telegram channels (public, private, paywalled).
+Extract **TEXT content** from Telegram channels (public, private, paywalled).
+
+**Important:** Always extract text via DOM/JSON. OCR/vision is ONLY for browser automation (clicking buttons, entering search queries), never for content extraction.
 
 ## Channel Types
 
-| Type | Access Method | Requirements |
-|------|---------------|--------------|
-| Public | Tavily extract (Method 1) | None (URL only) |
-| Public | Playwright (Method 2) | `npx playwright-cli` |
-| Private | Telethon API (Method 3) | api_id, api_hash, phone |
-| Private | Playwright + login (Method 4) | User logs in manually |
-| Paywalled | Browser + session (Method 4) | Account + subscription |
-| Any | Manual export (Method 5) | Telegram Desktop |
+| Type | Method | Requirements |
+|------|--------|--------------|
+| Public | Playwright preview | `npx playwright-cli`, no login |
+| Private/Closed | Playwright headed + user login | User logs in once, session persists |
+| Any | Desktop Export + Script | Telegram Desktop, then run script |
 
-## Workflow
+## OCR/Vision Usage
 
-Follow this escalation pattern:
+**Only for browser automation:**
+- Clicking buttons (login, search, navigate)
+- Entering text in search fields
+- Finding elements by visual reference
 
-1. **Try Tavily extract** — `tvly extract "https://t.me/s/CHANNEL_NAME"` (Method 1)
-2. **Failed?** → Use Playwright web scraping (Method 2)
-3. **Private?** → Use Telethon API (Method 3) or Playwright with login (Method 4)
-4. **Paywalled?** → Manual export via Telegram Desktop (Method 5)
+**Never for content extraction:**
+- Message text → Use DOM selectors
+- Message metadata → Use DOM selectors
+- Export data → Use JSON parsing
 
-## Method 1: Tavily Extract (Public Channels - Simplest)
+## Method 1: Public Channels (Playwright Preview)
 
-Best for: Public channels, quick extraction without setup
-
-```bash
-# Extract content from public preview page
-tvly extract "https://t.me/s/CHANNEL_NAME" --format markdown
-```
-
-**Limitations:**
-- May get garbled content (JS rendering issues)
-- Rate limited by Telegram
-- Use Playwright (Method 2) if this fails
-
-## Method 2: Playwright Web Scraping (Public Channels - Reliable)
-
-Best for: Public channels when Method 1 fails, JS-rendered content
+For public channels, use the preview URL (no login needed):
 
 ```bash
-# Navigate to channel web preview
+# Open channel preview
 npx playwright-cli open "https://t.me/s/CHANNEL_NAME"
 
-# Extract text content
-npx playwright-cli eval "document.body.innerText"
+# Extract message count
+npx playwright-cli eval "document.querySelectorAll('.tgme_widget_message_text').length"
 
-# Take snapshot for DOM analysis
-npx playwright-cli snapshot
+# Extract first message text
+npx playwright-cli eval "document.querySelector('.tgme_widget_message_text').innerText"
+
+# Extract all messages as array (first 5)
+npx playwright-cli eval "Array.from(document.querySelectorAll('.tgme_widget_message_text')).slice(0,5).map(el => el.innerText).join('\\n---\\n')"
 ```
 
 **URL Pattern:**
-- Full: `https://t.me/CHANNEL_NAME` (requires login for full content)
-- Preview: `https://t.me/s/CHANNEL_NAME` (public preview, no login)
+- Preview: `https://t.me/s/CHANNEL_NAME` (public, no login)
+- Full: `https://t.me/CHANNEL_NAME` (may require login)
 
 **DOM Selectors:**
 ```css
+.tgme_widget_message_text   /* Message text - USE THIS */
 .tgme_widget_message        /* Message container */
-.tgme_widget_message_text   /* Message text */
 .tgme_widget_message_views  /* View count */
 .time                       /* Timestamp */
-.tgme_widget_message_photo_wrap  /* Image link */
 ```
 
-## Method 3: Telethon API (All Channels)
+## Method 2: Private/Closed Channels (Playwright Headed + Login)
 
-Best for: Private channels, bulk extraction, media
+For private/closed channels, start a headed browser session and ask user to log in:
 
-**Setup:**
-1. Get api_id and api_hash from https://my.telegram.org/apps
-2. Install: `pip install telethon`
-3. Run with phone number authentication
+```bash
+# 1. Open Telegram Web in headed mode
+npx playwright-cli open "https://web.telegram.org/" --headed
 
-```python
-from telethon import TelegramClient
+# 2. >>> ASK USER: "Please log in to Telegram in the browser window" <<<
 
-api_id = YOUR_API_ID
-api_hash = 'YOUR_API_HASH'
+# 3. Wait for user confirmation, then use OCR/vision to navigate:
+npx playwright-cli snapshot
+# Use OCR to find search box, click it
+npx playwright-cli click eREF
 
-async def scrape_channel(client, channel_username, limit=100):
-    async with client:
-        channel = await client.get_entity(channel_username)
-        messages = await client.get_messages(channel, limit=limit)
-        for msg in messages:
-            if msg.text:
-                print(f"{msg.date}: {msg.text}")
+# 4. Type channel name (use OCR to find input field)
+npx playwright-cli type "CHANNEL_NAME"
+
+# 5. Click on channel in results
+npx playwright-cli click eREF
+
+# 6. Extract TEXT content (DOM, not OCR!)
+npx playwright-cli eval "document.querySelectorAll('.message').length"
+
+# 7. Keep browser open for subsequent channels
+npx playwright-cli go-back
+# Repeat from step 3 for next channel
+```
+
+**Key Points:**
+- **User logs in ONCE** - session persists
+- **Browser stays open** - no need to re-login
+- **Use DOM for text extraction** - never OCR
+- **Use OCR/vision only** for clicking buttons/inputs
+
+**DOM Selectors for Telegram Web:**
+```css
+.message                    /* Message container */
+.text-content               /* Message text */
+.chat-list-item             /* Chat in sidebar */
+.time                       /* Timestamp */
 ```
 
 ## Method 3: Telegram Desktop Export (Any Channel)
 
-Best for: Private/paywalled channels, complete history, no coding
+For any channel, export via Telegram Desktop:
 
 **Steps:**
 1. Open Telegram Desktop
 2. Settings → Advanced → Export Telegram data
 3. Select channel/chat to export
-4. Choose format: JSON or HTML
-5. Select what to export: messages, media, files
-6. Export to chosen directory
+4. Choose format: **JSON** (preferred for text extraction)
+5. Select: messages (skip media for speed)
+6. Export to directory
 
 **Output:**
 ```
@@ -115,100 +124,19 @@ ChatExport_YYYY-MM-DD/
 └── files/               # Other files
 ```
 
-## Method 4: Playwright with Login (Private/Closed Channels)
-
-Best for: Private/closed channels requiring login, persistent session
-
+**Process exports:**
 ```bash
-# Open Telegram Web in headed mode - user will log in manually
-npx playwright-cli open "https://web.telegram.org/" --headed
-
-# >>> USER ACTION: Log in manually in the browser window <<<
-# Wait for user confirmation, then:
-
-# Search for channel
-npx playwright-cli type "CHANNEL_NAME"
-
-# Click on channel in search results (use ref from snapshot)
-npx playwright-cli click eREF
-
-# Extract content
-npx playwright-cli eval "document.querySelectorAll('.tgme_widget_message_text').length + ' messages'"
-
-# Scroll for more content
-npx playwright-cli press End
-npx playwright-cli eval "document.body.innerText"
-
-# Navigate to next channel (browser stays open!)
-npx playwright-cli go-back  # Return to chat list
-npx playwright-cli type "OTHER_CHANNEL"
-npx playwright-cli click eREF
+python scripts/extract_all_chats.py
 ```
 
-**Workflow:**
-1. Agent opens Telegram Web in headed mode
-2. **User logs in manually** (browser window visible)
-3. Agent navigates to target channel
-4. Agent extracts content
-5. **Browser stays open** — agent can navigate to next channel
-6. Repeat for multiple channels without re-login
-
-**For open channels via preview:**
-```bash
-# Open channel preview (no login needed for public channels)
-npx playwright-cli open "https://t.me/s/CHANNEL_NAME"
-
-# Extract messages
-npx playwright-cli eval "document.querySelector('.tgme_widget_message_text').innerText"
-```
-
-**Session Management:**
-- Browser session persists between extractions
-- Use `go-back` to return to chat list
-- Use `tab-list` / `tab-select` if needed
-- No need to close/reopen browser between scrapes
-
-**DOM Selectors for Telegram Web:**
-```css
-.tgme_widget_message_text   /* Message text (preview pages) */
-.chat-list-item             /* Chat in sidebar */
-.message                    /* Message container */
-.time                       /* Timestamp */
-```
-
-## Method 5: Telethon API (All Channels)
-
-Best for: Private channels, bulk extraction, media, programmatic access
-
-**Setup:**
-1. Get api_id and api_hash from https://my.telegram.org/apps
-2. Install: `pip install telethon`
-3. Run with phone number authentication
-
-```python
-from telethon import TelegramClient
-
-api_id = YOUR_API_ID
-api_hash = 'YOUR_API_HASH'
-
-async def scrape_channel(client, channel_username, limit=100):
-    async with client:
-        channel = await client.get_entity(channel_username)
-        messages = await client.get_messages(channel, limit=limit)
-        for msg in messages:
-            if msg.text:
-                print(f"{msg.date}: {msg.text}")
-```
-
-## Script: Extract All Chat Exports
+## Script: extract_all_chats.py
 
 **Location:** `scripts/extract_all_chats.py`
 
-**Purpose:** Extract all text content from Telegram Desktop chat exports (JSON format).
+**Purpose:** Parse Telegram Desktop JSON exports into markdown.
 
 **Usage:**
 ```bash
-# Run from any directory
 python scripts/extract_all_chats.py
 ```
 
@@ -218,53 +146,30 @@ python scripts/extract_all_chats.py
 - Handles corrupted JSON with partial parsing
 - Outputs: `CHANNEL_NAME_full.md` files
 
-**Output:**
-- Per-channel markdown files with all text messages
-- Summary statistics (total messages, text messages)
-
-## Output Format
+## Output Location
 
 Save extracted content to:
 ```
 D:/Documents/cmw-rag-channel-extractions/CHANNEL_NAME.md
 ```
 
-**Format:**
-```markdown
-# @CHANNEL_NAME
+## Workflow Summary
 
-Source: https://t.me/CHANNEL_NAME
-Date: YYYY-MM-DD
-Subscribers: X
-
----
-
-## Entry 1 - Date
-
-[Message content]
-
----
-
-## Key Topics
-
-- Topic 1
-- Topic 2
 ```
-
-## Tips
-
-- Use `--disable-images` to speed up scraping
-- Scroll to load more messages (infinite scroll)
-- Handle rate limiting with delays
-- **Session persists** — browser stays open between scrapes
-- Use `go-back` to return to chat list
-- Use `state-save` to persist session for future sessions
-- Export to JSON for structured data processing
-- Manual export is most reliable for private channels
+Public channel?
+  → Method 1: Playwright preview, extract text via DOM
+  
+Private/closed channel?
+  → Method 2: Playwright headed, user logs in, session persists
+  → Use OCR only for clicking/typing in browser
+  → Extract text via DOM selectors
+  
+Have Desktop export?
+  → Method 3: Run extract_all_chats.py
+```
 
 ## See Also
 
-- [Telethon Docs](https://docs.telethon.dev/)
-- [Playwright Skill](../playwright-cli/SKILL.md)
-- [Apify Telegram Scraper](https://apify.com/apify/telegram-channels-scraper)
-- [Telegram Desktop](https://desktop.telegram.org/)
+- [Telethon Docs](https://docs.telethon.dev/) - API alternative
+- [Playwright Skill](../playwright-cli/SKILL.md) - Browser automation
+- [Telegram Desktop](https://desktop.telegram.org/) - Export tool
